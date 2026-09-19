@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           BigInt   @id @default(autoincrement())
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  name         String?  @db.VarChar(100)
+  timezone     String   @default("UTC") @db.VarChar(50)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  refreshTokens RefreshToken[]
+  habits        Habit[]
+  checkIns      CheckIn[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        BigInt    @id @default(autoincrement())
+  userId    BigInt    @map("user_id")
+  tokenHash String    @map("token_hash") @db.VarChar(255)
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+enum HabitFrequency {
+  daily
+  weekly
+  custom
+}
+
+model Habit {
+  id          BigInt         @id @default(autoincrement())
+  userId      BigInt         @map("user_id")
+  title       String         @db.VarChar(150)
+  description String?        @db.Text
+  frequency   HabitFrequency @default(daily)
+  targetDays  Json?          @map("target_days")
+  isActive    Boolean        @default(true) @map("is_active")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logs HabitLog[]
+
+  @@index([userId, isActive])
+  @@map("habits")
+}
+
+model HabitLog {
+  id        BigInt   @id @default(autoincrement())
+  habitId   BigInt   @map("habit_id")
+  logDate   DateTime @map("log_date") @db.Date
+  completed Boolean  @default(false)
+  note      String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  habit Habit @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
+  @@unique([habitId, logDate])
+  @@index([habitId, logDate])
+  @@map("habit_logs")
+}
+
+model CheckIn {
+  id           BigInt   @id @default(autoincrement())
+  userId       BigInt   @map("user_id")
+  checkInDate  DateTime @map("check_in_date") @db.Date
+  mood         Int?     @db.TinyInt
+  energy       Int?     @db.TinyInt
+  sleepHours   Decimal? @map("sleep_hours") @db.Decimal(4, 1)
+  stressLevel  Int?     @map("stress_level") @db.TinyInt
+  note         String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, checkInDate])
+  @@index([userId, checkInDate])
+  @@map("check_ins")
+}

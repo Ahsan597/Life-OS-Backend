@@ -1,0 +1,14 @@
+node_modules/
+.env
+*.log
+coverage/
+dist/
+
+/src/generated/prisma
+
+# Leftover scaffolding from an earlier Prisma 7 `init` attempt (unused, harmless, not referenced by any code)
+.claude/
+.windsurf/
+.agents/
+skills-lock.json
+prisma7.config.ts
