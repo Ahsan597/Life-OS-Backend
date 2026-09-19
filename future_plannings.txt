@@ -1,0 +1,57 @@
+LIFE OS - FUTURE PLANNINGS
+(Ideas for later. Not part of the current phase roadmap in
+planning_and_phases.txt - these are things to revisit once Phase 0-1 are
+solid, so scope doesn't creep early.)
+
+--------------------------------------------------------------------------
+FEATURE: Conversational Assistant Logging (no manual tracking)
+--------------------------------------------------------------------------
+Problem:
+  Most habit/journal apps fail because manually opening the app and filling
+  forms for every habit/check-in is friction. A busy user often just stops
+  logging after a few days.
+
+Idea:
+  The user opens the app and simply talks/types to an assistant (chatbot)
+  about their day in plain language - e.g. "woke up at 7, went to the gym,
+  skipped meditation, slept like 5 hours, felt pretty stressed about work."
+  The assistant parses this and automatically creates/updates the relevant
+  records (habit logs, check-in entries, maybe even draft decision-journal
+  entries) - the user never fills a manual form.
+
+Why it matters:
+  This turns Life OS from "another tracker you have to maintain" into
+  something closer to just narrating your day to a friend - removing the
+  single biggest reason these apps get abandoned.
+
+Rough technical approach:
+  - A chat endpoint (e.g. POST /assistant/message) that takes the user's
+    free-text message
+  - An LLM call that extracts structured intents from the message: which
+    habits were done/not done, check-in values (mood/energy/sleep/stress),
+    and any other loggable events
+  - A mapping/confirmation step: show the user what was understood
+    ("Marked: Gym - done, Meditation - missed, Sleep - 5h, Stress - high.
+    Correct?") before committing to the database, so misunderstandings don't
+    silently corrupt data
+  - Once confirmed, the assistant calls the same underlying services/
+    endpoints that manual logging already uses (Habit/HabitLog/CheckIn
+    services from Phase 1) - it's a new input method, not a new data model
+  - Conversation history could itself become useful data later (tone,
+    recurring themes) but that's a separate, later idea
+
+Dependencies / prerequisites:
+  - Requires Phase 1 (habits, check-ins, streaks) to already exist, since
+    this feature is just a smarter way to fill the same data
+  - Requires an LLM integration (API call), which is a new type of external
+    dependency for this project - needs its own cost/rate-limit thinking
+  - Needs a review/confirmation UI step on the frontend so users can correct
+    misunderstood entries before they're saved
+
+Where this fits:
+  Best considered after core Phase 0-3 functionality is working, as an
+  alternative "smart" input method layered on top of the existing data
+  model - not a replacement for the manual UI, but an additional way in.
+
+--------------------------------------------------------------------------
+(Add more future ideas below as they come up.)

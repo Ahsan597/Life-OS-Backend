@@ -1,0 +1,229 @@
+LIFE OS - DATABASE DESIGN
+(Reference document. Covers the full data model implied by
+planning_and_phases.txt and future_plannings.txt, organized by which phase
+introduces each table. Only Phase 0-1 tables should actually be built now -
+the rest are here so the eventual schema is already thought through and
+nothing has to be redesigned later.)
+
+Engine: MySQL 8, InnoDB, managed via Prisma migrations.
+
+--------------------------------------------------------------------------
+DESIGN PRINCIPLES (read this before building anything)
+--------------------------------------------------------------------------
+1. Every user-owned table has a user_id foreign key. There is no data in
+   this system that isn't scoped to a user.
+
+2. Day-boundary rule (resolves the open question from planning_and_phases.txt):
+   users.timezone stores an IANA timezone string (e.g. "Asia/Karachi").
+   Whenever a "which day is this for" decision is made (a habit log, a
+   check-in), the backend computes the logical date using the user's
+   timezone BEFORE saving it as a plain DATE column. The DB never does
+   timezone math - it only ever stores an already-resolved date. This keeps
+   "today" consistent regardless of what time the user actually logs in.
+
+3. Habits are archived, not deleted (is_active flag). Deleting a habit would
+   orphan or destroy historical habit_logs, which defeats the point of a
+   tracking product. Archiving keeps history intact while hiding it from
+   active use.
+
+4. One row per user per day for check_ins, and one row per habit per day for
+   habit_logs - enforced with unique constraints, not just app logic, so bad
+   data can't silently accumulate.
+
+5. Tables from Phase 2+ (insights, recommendations, predictions) are
+   designed to store COMPUTED/DERIVED data, not source data. They can always
+   be safely recomputed/truncated - the source of truth is always
+   habits/habit_logs/check_ins/decisions.
+
+6. Foreign key delete behavior:
+   - Child rows that only make sense with their parent (habit_logs under
+     habits, refresh_tokens under users) -> ON DELETE CASCADE
+   - Optional/organizational links (a habit's life_area_id) -> ON DELETE
+     SET NULL, so deleting a life-area doesn't destroy habits
+
+--------------------------------------------------------------------------
+PHASE 0-1 TABLES (build these now)
+--------------------------------------------------------------------------
+
+users
+  id                BIGINT PK AUTO_INCREMENT
+  email             VARCHAR(255) UNIQUE NOT NULL
+  password_hash     VARCHAR(255) NOT NULL
+  name              VARCHAR(100)
+  timezone          VARCHAR(50) NOT NULL DEFAULT 'UTC'
+  created_at        DATETIME NOT NULL DEFAULT NOW()
+  updated_at        DATETIME NOT NULL ON UPDATE NOW()
+
+refresh_tokens
+  id                BIGINT PK AUTO_INCREMENT
+  user_id           BIGINT FK -> users.id (CASCADE)
+  token_hash        VARCHAR(255) NOT NULL
+  expires_at        DATETIME NOT NULL
+  revoked_at        DATETIME NULL
+  created_at        DATETIME NOT NULL DEFAULT NOW()
+  INDEX (user_id)
+
+habits
+  id                BIGINT PK AUTO_INCREMENT
+  user_id           BIGINT FK -> users.id (CASCADE)
+  life_area_id      BIGINT FK -> life_areas.id (SET NULL, NULLABLE)  [added when life_areas exists, Phase 1+]
+  title             VARCHAR(150) NOT NULL
+  description       TEXT NULL
+  frequency         ENUM('daily','weekly','custom') NOT NULL DEFAULT 'daily'
+  target_days       JSON NULL   -- e.g. [1,3,5] for custom weekly schedules
+  is_active         BOOLEAN NOT NULL DEFAULT TRUE
+  created_at        DATETIME NOT NULL DEFAULT NOW()
+  updated_at        DATETIME NOT NULL ON UPDATE NOW()
+  INDEX (user_id, is_active)
+
+habit_logs
+  id                BIGINT PK AUTO_INCREMENT
+  habit_id          BIGINT FK -> habits.id (CASCADE)
+  log_date          DATE NOT NULL          -- resolved per user's timezone, see principle 2
+  completed         BOOLEAN NOT NULL DEFAULT FALSE
+  note              TEXT NULL
+  created_at        DATETIME NOT NULL DEFAULT NOW()
+  UNIQUE (habit_id, log_date)
+  INDEX (habit_id, log_date)
+
+check_ins
+  id                BIGINT PK AUTO_INCREMENT
+  user_id           BIGINT FK -> users.id (CASCADE)
+  check_in_date     DATE NOT NULL
+  mood              TINYINT NULL      -- scale 1-5
+  energy            TINYINT NULL      -- scale 1-5
+  sleep_hours       DECIMAL(4,1) NULL
+  stress_level      TINYINT NULL      -- scale 1-5
+  note              TEXT NULL
+  created_at        DATETIME NOT NULL DEFAULT NOW()
+  UNIQUE (user_id, check_in_date)
+  INDEX (user_id, check_in_date)
+
+--------------------------------------------------------------------------
+PHASE 1 (deferred pillar, add when decisions/goals are prioritized)
+--------------------------------------------------------------------------
+
+life_areas
+  id                BIGINT PK AUTO_INCREMENT
+  user_id           BIGINT FK -> users.id (CASCADE)
+  name              VARCHAR(100) NOT NULL   -- e.g. "Health", "Career", "Finance"
+  description       TEXT NULL
+  created_at        DATETIME NOT NULL DEFAULT NOW()
+  INDEX (user_id)
+
+decisions
+  id                BIGINT PK AUTO_INCREMENT
+  user_id           BIGINT FK -> users.id (CASCADE)
+  life_area_id      BIGINT FK -> life_areas.id (SET NULL, NULLABLE)
+  title             VARCHAR(200) NOT NULL
+  context           TEXT NULL         -- situation at the time
+  decision_made     TEXT NOT NULL
+  decided_at        DATE NOT NULL
+  expected_outcome  TEXT NULL
+  actual_outcome    TEXT NULL         -- filled in later, on follow-up
+  outcome_rating    TINYINT NULL      -- e.g. 1-5, how well it turned out
+  follow_up_date    DATE NULL
+  created_at        DATETIME NOT NULL DEFAULT NOW()
+  updated_at        DATETIME NOT NULL ON UPDATE NOW()
+  INDEX (user_id, decided_at)
+
+--------------------------------------------------------------------------
+PHASE 2 TABLES (statistics-based intelligence)
+--------------------------------------------------------------------------
+
+insights
+  id                  BIGINT PK AUTO_INCREMENT
+  user_id             BIGINT FK -> users.id (CASCADE)
+  metric_a            VARCHAR(100) NOT NULL   -- e.g. "sleep_hours"
+  metric_b            VARCHAR(100) NOT NULL   -- e.g. "habit_completion_rate"
+  correlation_value   DECIMAL(4,3) NOT NULL   -- e.g. -0.72
+  description         TEXT NOT NULL           -- human-readable summary
+  computed_at         DATETIME NOT NULL DEFAULT NOW()
+  is_stale            BOOLEAN NOT NULL DEFAULT FALSE
+  INDEX (user_id, computed_at)
+
+recommendations
+  id                BIGINT PK AUTO_INCREMENT
+  user_id           BIGINT FK -> users.id (CASCADE)
+  habit_id          BIGINT FK -> habits.id (SET NULL, NULLABLE)
+  source            ENUM('rule_based','ml_based') NOT NULL DEFAULT 'rule_based'
+  message           TEXT NOT NULL
+  reason            TEXT NULL
+  status            ENUM('pending','accepted','dismissed') NOT NULL DEFAULT 'pending'
+  created_at        DATETIME NOT NULL DEFAULT NOW()
+  INDEX (user_id, status)
+
+--------------------------------------------------------------------------
+PHASE 3 TABLES (prediction)
+--------------------------------------------------------------------------
+
+predictions
+  id                BIGINT PK AUTO_INCREMENT
+  user_id           BIGINT FK -> users.id (CASCADE)
+  habit_id          BIGINT FK -> habits.id (SET NULL, NULLABLE)
+  type              ENUM('streak_risk') NOT NULL DEFAULT 'streak_risk'
+  score             DECIMAL(4,3) NOT NULL   -- e.g. 0.85 probability of breaking streak
+  model_version     VARCHAR(50) NOT NULL    -- e.g. "heuristic_v1", "ml_v1" - for reproducibility
+  predicted_at      DATETIME NOT NULL DEFAULT NOW()
+  INDEX (user_id, habit_id, predicted_at)
+
+--------------------------------------------------------------------------
+PHASE 4 TABLES (polish)
+--------------------------------------------------------------------------
+
+notifications
+  id                BIGINT PK AUTO_INCREMENT
+  user_id           BIGINT FK -> users.id (CASCADE)
+  type              ENUM('reminder','insight','recommendation') NOT NULL
+  message           TEXT NOT NULL
+  is_read           BOOLEAN NOT NULL DEFAULT FALSE
+  scheduled_at      DATETIME NULL
+  sent_at           DATETIME NULL
+  created_at        DATETIME NOT NULL DEFAULT NOW()
+  INDEX (user_id, is_read)
+
+--------------------------------------------------------------------------
+FUTURE TABLE (conversational assistant logging - see future_plannings.txt)
+--------------------------------------------------------------------------
+
+assistant_messages
+  id                BIGINT PK AUTO_INCREMENT
+  user_id           BIGINT FK -> users.id (CASCADE)
+  role              ENUM('user','assistant') NOT NULL
+  content           TEXT NOT NULL
+  parsed_result     JSON NULL   -- structured extraction before user confirms it
+  created_at        DATETIME NOT NULL DEFAULT NOW()
+  INDEX (user_id, created_at)
+
+--------------------------------------------------------------------------
+RELATIONSHIP SUMMARY
+--------------------------------------------------------------------------
+users            1---N  refresh_tokens
+users            1---N  habits
+users            1---N  check_ins
+users            1---N  life_areas
+users            1---N  decisions
+users            1---N  insights
+users            1---N  recommendations
+users            1---N  predictions
+users            1---N  notifications
+users            1---N  assistant_messages
+habits           1---N  habit_logs
+life_areas       1---N  habits          (optional link)
+life_areas       1---N  decisions       (optional link)
+habits           1---N  recommendations (optional link)
+habits           1---N  predictions     (optional link)
+
+--------------------------------------------------------------------------
+NOTES FOR FUTURE-YOU
+--------------------------------------------------------------------------
+- If you're reading this months/years later trying to remember why things
+  are shaped this way: the core loop is users -> habits -> habit_logs and
+  users -> check_ins. Everything else (insights, recommendations,
+  predictions) is derived FROM that core loop and can be recomputed/wiped
+  without losing real data.
+- Build tables in the phase order above. Don't create Phase 2+ tables while
+  still working on Phase 0-1 - see planning_and_phases.txt.
+- The actual Prisma schema (schema.prisma, once created) is the executable
+  source of truth; this file is the human-readable design reference and
+  should be updated if the real schema diverges from it.

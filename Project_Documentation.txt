@@ -1,0 +1,13 @@
+PROJECT: Life OS
+
+Life OS is a personal system for tracking habits, daily check-ins (mood, energy,
+sleep), and life decisions, then turning that data into real self-insight.
+Instead of generic advice, it studies your own patterns - for example noticing
+that your habit success drops on low-sleep days - and eventually predicts risks
+(like a streak about to break) and recommends adjustments based on what has
+actually worked for you before. It is built as a full product: an Express.js +
+MySQL backend and a separate frontend, connected over a REST API, developed in
+phases with production-realistic practices (Docker, proper data modeling,
+testing) rather than as a throwaway script. This is currently a learning
+project and portfolio piece, with the long-term goal of possibly becoming a
+real product people can use.

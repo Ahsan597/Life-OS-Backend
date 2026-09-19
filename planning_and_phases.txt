@@ -1,0 +1,156 @@
+LIFE OS - PLANNING & PHASES
+(Shared plan for BOTH backend and frontend. Same roadmap, divided by role -
+not two separate plans. Backend is built in this repo; frontend is a separate
+folder/repo, developed independently but following this exact same phase
+breakdown.)
+
+--------------------------------------------------------------------------
+TECH STACK
+--------------------------------------------------------------------------
+Backend:
+  - Node.js + Express.js
+  - MySQL 8 (run via Docker / docker-compose)
+  - Prisma (ORM + migrations)
+  - JWT auth (access + refresh tokens)
+  - Jest + Supertest (testing)
+  - Pino (logging)
+
+Frontend:
+  - Framework to be finalized separately (React / Next.js expected)
+  - Talks to backend only via REST JSON API
+  - Builds UI only for what the backend has already shipped in that phase
+
+Future / later phases:
+  - Python microservice for real ML-based predictions (Phase 3+)
+
+--------------------------------------------------------------------------
+PHASE 0 - FOUNDATION & SETUP
+--------------------------------------------------------------------------
+Goal: Both apps scaffolded, connected, user can register/log in.
+
+Backend - what to create:
+  - Folder structure: /src/routes, /src/controllers, /src/services,
+    /src/repositories, /src/middlewares, /src/config
+  - docker-compose.yml: mysql:8 service + adminer service, named volume
+  - Prisma schema.prisma with base tables:
+      User (id, email, passwordHash, name, timezone, createdAt)
+      Habit (id, userId, title, description, frequency, createdAt)
+      HabitLog (id, habitId, date, completed, note)
+      CheckIn (id, userId, date, mood, energy, sleepHours, stressLevel)
+  - Auth endpoints: POST /auth/register, POST /auth/login,
+    POST /auth/refresh, POST /auth/logout
+  - Middlewares: errorHandler, authGuard (JWT verify), validateRequest
+    (schema validation on request body)
+  - .env.example with DB_URL, JWT_SECRET, JWT_REFRESH_SECRET, PORT
+
+Frontend - what to create:
+  - App scaffold + routing set up
+  - api/client - single HTTP client instance with base URL + auth token
+    interceptor
+  - Pages: /register, /login
+  - Auth state (context/store) + a protected-route wrapper
+  - Basic layout: Navbar, Sidebar, page container
+
+Amount of work: Medium-Large (one-time setup/plumbing, tedious but not hard)
+
+--------------------------------------------------------------------------
+PHASE 1 - CORE PRODUCT LOOP (the real MVP)
+--------------------------------------------------------------------------
+Goal: User can create habits, log them daily, check in, and see progress.
+
+Backend - what to create:
+  - Habit endpoints: POST /habits, GET /habits, GET /habits/:id,
+    PUT /habits/:id, DELETE /habits/:id
+  - HabitLog endpoints: POST /habits/:id/logs (mark done for a date),
+    GET /habits/:id/logs, PATCH /logs/:id
+  - CheckIn endpoints: POST /checkins, GET /checkins?from=&to=,
+    GET /checkins/:date
+  - Streak service: functions to compute current streak + longest streak
+    per habit
+  - Analytics endpoints: GET /habits/:id/stats (completion rate),
+    GET /checkins/stats (trends over a date range)
+  - Decide and implement day-boundary/timezone handling (use the user's
+    stored timezone to normalize "today" consistently)
+
+Frontend - what to create:
+  - Dashboard page: today's habits with a done/not-done toggle, check-in
+    prompt if today's check-in is missing
+  - Habit pages: create form, edit form, list view, delete confirmation
+  - CheckIn form component (mood / energy / sleep / stress inputs)
+  - History/calendar component showing streaks visually (e.g. heatmap or
+    calendar grid)
+  - Charts: completion rate over time, basic trend lines
+
+Amount of work: Large - this is the core usable product. Most time should
+go here before touching anything "intelligent."
+
+--------------------------------------------------------------------------
+PHASE 2 - INTELLIGENCE V1 (statistics-based, no ML yet)
+--------------------------------------------------------------------------
+Goal: Surface real patterns from the data already being collected.
+
+Backend - what to create:
+  - Correlation service: compute correlation (e.g. Pearson) between
+    check-in metrics (sleep, mood, energy) and habit completion rate
+  - Endpoint: GET /insights/correlations
+  - Rule-based recommendation engine (e.g. "3 missed days in a row ->
+    suggest an easier version of the habit")
+  - Endpoint: GET /insights/recommendations
+
+Frontend - what to create:
+  - Insights page: correlation findings shown as plain-language cards
+  - Recommendations feed component
+  - One simple chart to visualize a correlation (e.g. scatter or bar)
+
+Amount of work: Medium - quality depends on enough real Phase 1 data
+existing to be meaningful.
+
+--------------------------------------------------------------------------
+PHASE 3 - PREDICTION & SMARTER RECOMMENDATIONS
+--------------------------------------------------------------------------
+Goal: Forecast risk and personalize recommendations, not just describe the
+past.
+
+Backend - what to create:
+  - Streak-risk forecasting service (start with a simple heuristic/formula
+    on recent completion trend before any real ML)
+  - Endpoint: GET /predictions/streak-risk
+  - Recommendation ranking logic (score/order recommendations per user)
+  - Optional: separate Python microservice exposing a /predict endpoint,
+    called from Express over HTTP once real ML is introduced
+
+Frontend - what to create:
+  - Risk indicator on habit cards (e.g. "at risk" badge)
+  - Predictions page
+  - Ranked recommendation feed reflecting the new scoring
+
+Amount of work: Large - most technically complex phase, especially once
+the ML microservice is introduced.
+
+--------------------------------------------------------------------------
+PHASE 4 - PRODUCT POLISH
+--------------------------------------------------------------------------
+Goal: Make it feel like a real, usable product.
+
+Backend - what to create:
+  - Notification/reminder scheduling (cron job + email or push placeholder)
+  - Export endpoint: GET /export (CSV/JSON dump of user's data)
+  - Rate limiting, helmet/security headers, input sanitization pass
+
+Frontend - what to create:
+  - Settings page (profile, timezone, notification preferences)
+  - Export button / download flow
+  - Responsive/mobile polish, optional PWA manifest
+
+Amount of work: Medium - refinement rather than new core functionality.
+
+--------------------------------------------------------------------------
+NOTES
+--------------------------------------------------------------------------
+- MVP scope for Phase 0-1 is intentionally narrow: Habits + Check-ins only.
+  Decision journal, goals/life-areas, and correlation engine are deferred -
+  do not expand scope before Phase 0-1 is solid.
+- Open design question to resolve during Phase 1: exact rule for "day
+  boundaries" / timezones for habit logs and check-ins.
+- Frontend and backend must stay in phase-lockstep: don't build frontend UI
+  for a feature the backend hasn't shipped yet in that phase.
