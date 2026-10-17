@@ -11,9 +11,14 @@ function errorHandler(err, req, res, next) {
     logger.error({ err }, "Unexpected error");
   }
 
-  res.status(statusCode).json({
+  const body = {
     error: err.isOperational ? err.message : "Internal server error",
-  });
+  };
+  if (err.isOperational && err.details) {
+    body.details = err.details;
+  }
+
+  res.status(statusCode).json(body);
 }
 
 module.exports = { notFound, errorHandler };

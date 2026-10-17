@@ -12,4 +12,9 @@ const env = {
   },
 };
 
+// Fail fast at startup instead of on the first login request.
+if (!env.jwt.accessSecret || !env.jwt.refreshSecret) {
+  throw new Error("JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be set");
+}
+
 module.exports = env;
