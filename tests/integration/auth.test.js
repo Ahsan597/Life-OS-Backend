@@ -48,6 +48,24 @@ describe("Auth API", () => {
       expect(res.status).toBe(409);
     });
 
+    it("returns 409 (never 500) when the same email registers concurrently", async () => {
+      const results = await Promise.all(
+        [1, 2, 3].map(() => register({ email: email("race"), password: PASSWORD }))
+      );
+
+      expect(results.map((r) => r.status).sort()).toEqual([201, 409, 409]);
+    });
+
+    it("rejects a malformed JSON body with 400", async () => {
+      const res = await request(app)
+        .post("/api/v1/auth/register")
+        .set("Content-Type", "application/json")
+        .send('{"email":');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("Malformed JSON body");
+    });
+
     it("rejects invalid input with 400 and field details", async () => {
       const res = await register({ email: "nope", password: "short", timezone: "Mars/Base" });
 
@@ -156,9 +174,7 @@ describe("Auth API", () => {
     });
 
     it("is idempotent for an unknown token", async () => {
-      const res = await request(app)
-        .post("/api/v1/auth/logout")
-        .send({ refreshToken: "unknown" });
+      const res = await request(app).post("/api/v1/auth/logout").send({ refreshToken: "unknown" });
       expect(res.status).toBe(204);
     });
   });

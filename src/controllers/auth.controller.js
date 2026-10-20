@@ -1,29 +1,28 @@
 const authService = require("../services/auth.service");
-const asyncHandler = require("../utils/asyncHandler");
 
-const register = asyncHandler(async (req, res) => {
+async function register(req, res) {
   const result = await authService.register(req.body);
   res.status(201).json(result);
-});
+}
 
-const login = asyncHandler(async (req, res) => {
+async function login(req, res) {
   const result = await authService.login(req.body);
   res.status(200).json(result);
-});
+}
 
-const refresh = asyncHandler(async (req, res) => {
+async function refresh(req, res) {
   const tokens = await authService.refresh(req.body.refreshToken);
   res.status(200).json(tokens);
-});
+}
 
-const logout = asyncHandler(async (req, res) => {
+async function logout(req, res) {
   await authService.logout(req.body.refreshToken);
   res.status(204).end();
-});
+}
 
-const me = asyncHandler(async (req, res) => {
+async function me(req, res) {
   const user = await authService.getCurrentUser(req.user.id);
   res.status(200).json({ user });
-});
+}
 
 module.exports = { register, login, refresh, logout, me };

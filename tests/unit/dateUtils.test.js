@@ -1,4 +1,38 @@
-const { resolveLogicalDate } = require("../../src/utils/dateUtils");
+const {
+  resolveLogicalDate,
+  isValidDateString,
+  addDays,
+  diffDays,
+  dayOfWeek,
+  weekStart,
+  toDbDate,
+  fromDbDate,
+} = require("../../src/utils/dateUtils");
+
+describe("calendar helpers", () => {
+  it("validates real calendar dates only", () => {
+    expect(isValidDateString("2026-02-28")).toBe(true);
+    expect(isValidDateString("2026-02-30")).toBe(false);
+    expect(isValidDateString("2026-2-3")).toBe(false);
+    expect(isValidDateString(undefined)).toBe(false);
+  });
+
+  it("adds and diffs days across month and year boundaries", () => {
+    expect(addDays("2025-12-31", 1)).toBe("2026-01-01");
+    expect(addDays("2026-03-01", -1)).toBe("2026-02-28");
+    expect(diffDays("2025-12-30", "2026-01-02")).toBe(3);
+  });
+
+  it("uses 0 = Sunday and Monday-based weeks", () => {
+    expect(dayOfWeek("2026-03-01")).toBe(0); // Sunday
+    expect(weekStart("2026-03-01")).toBe("2026-02-23");
+    expect(weekStart("2026-03-02")).toBe("2026-03-02");
+  });
+
+  it("round-trips through the DB date representation", () => {
+    expect(fromDbDate(toDbDate("2026-07-04"))).toBe("2026-07-04");
+  });
+});
 
 describe("resolveLogicalDate", () => {
   it("resolves an earlier calendar day for a timezone behind UTC", () => {

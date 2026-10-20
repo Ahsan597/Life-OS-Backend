@@ -1,4 +1,5 @@
 const bcrypt = require("bcrypt");
+const { Prisma } = require("@prisma/client");
 const userRepository = require("../repositories/user.repository");
 const refreshTokenRepository = require("../repositories/refreshToken.repository");
 const tokenService = require("./token.service");
@@ -40,7 +41,16 @@ async function register({ email, password, name, timezone }) {
   }
 
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  const user = await userRepository.create({ email, passwordHash, name, timezone });
+  let user;
+  try {
+    user = await userRepository.create({ email, passwordHash, name, timezone });
+  } catch (err) {
+    // A concurrent request registered the same email between the check and the insert.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      throw new AppError("Email is already registered", 409);
+    }
+    throw err;
+  }
   const tokens = await issueTokens(user.id);
 
   return { user: toPublicUser(user), ...tokens };

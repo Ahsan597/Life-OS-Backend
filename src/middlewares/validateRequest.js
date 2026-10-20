@@ -1,13 +1,13 @@
 const AppError = require("../utils/AppError");
 
 /**
- * Validates req.body against a Zod schema. On success, req.body is replaced
- * with the parsed (trimmed/defaulted/stripped) data so controllers only ever
- * see clean input.
+ * Validates req[source] ("body", "query" or "params") against a Zod schema.
+ * On success, req[source] is replaced with the parsed (trimmed/defaulted/
+ * stripped) data so controllers only ever see clean input.
  */
-function validateRequest(schema) {
+function validateRequest(schema, source = "body") {
   return function (req, res, next) {
-    const result = schema.safeParse(req.body ?? {});
+    const result = schema.safeParse(req[source] ?? {});
 
     if (!result.success) {
       const details = result.error.issues.map((issue) => ({
@@ -17,7 +17,14 @@ function validateRequest(schema) {
       return next(new AppError("Validation failed", 400, details));
     }
 
-    req.body = result.data;
+    // Express 5 exposes req.query as a getter only, so plain assignment
+    // would not stick; defineProperty works for every source.
+    Object.defineProperty(req, source, {
+      value: result.data,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
     next();
   };
 }
