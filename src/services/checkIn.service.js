@@ -2,6 +2,7 @@ const checkInRepository = require("../repositories/checkIn.repository");
 const userService = require("./user.service");
 const { METRICS } = require("../validators/checkIn.validators");
 const AppError = require("../utils/AppError");
+const { mean, round, slope: leastSquaresSlope } = require("../utils/stats");
 const { getTodayForUser, toDbDate, fromDbDate, addDays, diffDays } = require("../utils/dateUtils");
 
 const DEFAULT_RANGE_DAYS = 30;
@@ -24,12 +25,13 @@ function toPublicCheckIn(checkIn) {
 }
 
 /**
- * Resolves an optional from/to pair: `to` defaults to today, `from` to 30 days
- * before `to`. Ranges are capped so one request can't pull years of rows.
+ * Resolves an optional from/to pair: `to` defaults to today, `from` to
+ * `defaultDays` (30) days ending at `to`. Ranges are capped so one request
+ * can't pull years of rows.
  */
-function resolveRange({ from, to }, today) {
+function resolveRange({ from, to }, today, defaultDays = DEFAULT_RANGE_DAYS) {
   const rangeTo = to || today;
-  const rangeFrom = from || addDays(rangeTo, -(DEFAULT_RANGE_DAYS - 1));
+  const rangeFrom = from || addDays(rangeTo, -(defaultDays - 1));
   if (rangeFrom > rangeTo) {
     throw new AppError("'from' must be on or before 'to'", 400);
   }
@@ -74,26 +76,6 @@ async function getCheckInByDate(userId, date) {
   return toPublicCheckIn(checkIn);
 }
 
-function round(value, places = 2) {
-  const factor = 10 ** places;
-  return Math.round(value * factor) / factor;
-}
-
-// Least-squares slope of value against day offset, i.e. change per day.
-function slopePerDay(points) {
-  if (points.length < 2) return null;
-  const n = points.length;
-  const meanX = points.reduce((s, p) => s + p.x, 0) / n;
-  const meanY = points.reduce((s, p) => s + p.y, 0) / n;
-  let num = 0;
-  let den = 0;
-  for (const { x, y } of points) {
-    num += (x - meanX) * (y - meanY);
-    den += (x - meanX) ** 2;
-  }
-  return den === 0 ? null : num / den;
-}
-
 function summarizeMetric(series, metric, from) {
   const points = series
     .filter((c) => c[metric] !== null)
@@ -104,7 +86,7 @@ function summarizeMetric(series, metric, from) {
   }
 
   const values = points.map((p) => p.y);
-  const slope = slopePerDay(points);
+  const slope = leastSquaresSlope(points);
   let trend = null;
   if (slope !== null) {
     trend = Math.abs(slope) < FLAT_SLOPE ? "flat" : slope > 0 ? "rising" : "falling";
@@ -112,7 +94,7 @@ function summarizeMetric(series, metric, from) {
 
   return {
     count: points.length,
-    average: round(values.reduce((s, v) => s + v, 0) / values.length),
+    average: round(mean(values)),
     min: Math.min(...values),
     max: Math.max(...values),
     slopePerDay: slope === null ? null : round(slope, 3),
@@ -146,7 +128,6 @@ async function getCheckInStats(userId, query) {
 
 module.exports = {
   resolveRange,
-  slopePerDay,
   saveCheckIn,
   listCheckIns,
   getCheckInByDate,

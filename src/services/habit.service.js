@@ -205,4 +205,5 @@ module.exports = {
   listLogs,
   updateLog,
   getHabitStats,
+  loadCompletedDates,
 };

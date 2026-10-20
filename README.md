@@ -36,7 +36,7 @@ Notifications/reminders, exports, dashboards, possible frontend.
 
 ## Status
 
-🚧 Early development — Phase 0 (auth + setup) and Phase 1 (habits, logs, check-ins, streaks, analytics) are done.
+🚧 Early development — Phase 0 (auth + setup), Phase 1 (habits, logs, check-ins, streaks, analytics) and Phase 2 (correlations + rule-based recommendations) are done.
 
 ## Development
 
@@ -48,6 +48,7 @@ cp .env.example .env        # then set real JWT secrets
 npm install
 npm run prisma:migrate      # apply migrations to the dev DB
 npm run dev                 # node --watch
+npm run seed:demo           # optional: demo@lifeos.dev / Demo@12345 with 6 weeks of history
 ```
 
 | Script                                   | What it does                                                                      |
@@ -56,6 +57,7 @@ npm run dev                 # node --watch
 | `npm run test:unit` / `test:integration` | One suite only; unit tests need no database                                       |
 | `npm run lint` / `format`                | ESLint / Prettier                                                                 |
 | `npm run check`                          | Lint + format check + tests, the same as CI                                       |
+| `npm run seed:demo`                      | Resets the demo account with deterministic sample data (refuses in production)    |
 
 Integration tests read `.env.test` and refuse to run against any database whose name doesn't end in `_test`, so they can never wipe dev data. If your MySQL volume predates `docker/mysql/init/`, create the test DB once:
 
@@ -82,6 +84,20 @@ All routes are under `/api/v1` and need `Authorization: Bearer <accessToken>`.
 | GET    | `/checkins`         | `?from=&to=` (default: last 30 days, max 366)                                                                                                                                |
 | GET    | `/checkins/stats`   | Per-metric count/average/min/max/trend plus the daily series. Same range rules                                                                                               |
 | GET    | `/checkins/:date`   | 404 if there's no check-in that day                                                                                                                                          |
+
+## API (Phase 2 — insights)
+
+| Method | Route                           | Notes                                                                                                                                                                      |
+| ------ | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/insights/correlations`        | `?from=&to=` (default: last 90 days, max 366; today is excluded). Pearson `r` between each check-in metric and habit completion, overall and per habit, plus chart buckets |
+| GET    | `/insights/recommendations`     | `?status=pending\|accepted\|dismissed\|all` (default `pending`). Re-evaluates the rules first, so the list is always current                                               |
+| PATCH  | `/insights/recommendations/:id` | `{ status: "accepted" \| "dismissed" }`                                                                                                                                    |
+
+### How insights are computed
+
+- **Correlations** pair each day's check-in metric with that day's outcome: the share of scheduled habits completed (overall) or done/missed (per habit). Weekly habits are left out because they have no single expected day. Below 7 paired days the result is `insufficient_data`; strength is `negligible` (|r| < 0.1), `weak` (< 0.3), `moderate` (< 0.5) or `strong`. `highlights` lists the moderate and strong findings, strongest first. Correlation is not causation, and the copy avoids implying it.
+- **Recommendations** come from pure rules in `src/services/recommendationRules.js`: `missed_in_a_row`, `low_completion`, `streak_milestone`, `checkin_gap`, `low_sleep` and `rising_stress`. Each firing has a `dedupeKey` anchored to when the situation started, so a dismissed recommendation stays dismissed while that situation lasts, and pending ones that stop applying are removed automatically.
+- Correlations are computed on request rather than stored: at one user's data volume it takes milliseconds, and nothing can go stale. Recommendations are stored only so the user's accept/dismiss decision persists.
 
 ### Day boundaries and streak rules
 

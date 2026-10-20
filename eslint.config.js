@@ -25,6 +25,11 @@ module.exports = [
     files: ["tests/**/*.js"],
     languageOptions: { globals: { ...globals.node, ...globals.jest } },
   },
+  {
+    // CLI scripts report to the terminal; the app itself logs through pino.
+    files: ["scripts/**/*.js"],
+    rules: { "no-console": "off" },
+  },
   // Must stay last: turns off rules that would fight Prettier's formatting.
   prettier,
 ];

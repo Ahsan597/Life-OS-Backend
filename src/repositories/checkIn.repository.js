@@ -20,4 +20,8 @@ function findManyInRange(userId, from, to) {
   });
 }
 
-module.exports = { findByUserAndDate, upsert, findManyInRange };
+function findLatest(userId) {
+  return prisma.checkIn.findFirst({ where: { userId }, orderBy: { checkInDate: "desc" } });
+}
+
+module.exports = { findByUserAndDate, upsert, findManyInRange, findLatest };
