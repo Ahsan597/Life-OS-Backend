@@ -78,6 +78,23 @@ function computeStreaks(periods) {
   return { currentStreak: current, longestStreak: longest };
 }
 
+/**
+ * The run of periods at the end of the history that all have `completed`
+ * equal to the given value. An open (pending) period at the very end is
+ * skipped, matching how streaks are counted.
+ */
+function trailingRun(periods, completed) {
+  let end = periods.length - 1;
+  if (end >= 0 && periods[end].pending) end -= 1;
+  let length = 0;
+  let startKey = null;
+  for (let i = end; i >= 0 && periods[i].completed === completed; i--) {
+    length += 1;
+    startKey = periods[i].key;
+  }
+  return { length, startKey };
+}
+
 function rate(completed, scheduled) {
   return scheduled === 0 ? null : Math.round((completed / scheduled) * 1000) / 1000;
 }
@@ -148,6 +165,7 @@ function statsFor(habit, completedDates, createdDate, today, { from, to } = {}) 
 module.exports = {
   buildPeriods,
   computeStreaks,
+  trailingRun,
   completionStats,
   weeklyBreakdown,
   habitStartDate,

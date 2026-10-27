@@ -2,6 +2,8 @@ const { z } = require("zod");
 
 const listRecommendationsQuerySchema = z.object({
   status: z.enum(["pending", "accepted", "dismissed", "all"]).default("pending"),
+  // "rank": pending by personalized score first; "recent": newest first.
+  sort: z.enum(["rank", "recent"]).default("rank"),
 });
 
 // Users act on a recommendation; "pending" is only ever set by the engine.

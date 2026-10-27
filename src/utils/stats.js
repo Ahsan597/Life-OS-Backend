@@ -8,6 +8,13 @@ function mean(values) {
   return values.reduce((sum, v) => sum + v, 0) / values.length;
 }
 
+// Sample standard deviation (n - 1).
+function standardDeviation(values) {
+  if (values.length < 2) return null;
+  const m = mean(values);
+  return Math.sqrt(values.reduce((sum, v) => sum + (v - m) ** 2, 0) / (values.length - 1));
+}
+
 function round(value, places = 2) {
   if (value === null) return null;
   const factor = 10 ** places;
@@ -50,4 +57,4 @@ function pearson(points) {
   return Math.max(-1, Math.min(1, cov / Math.sqrt(varX * varY)));
 }
 
-module.exports = { mean, round, slope, pearson };
+module.exports = { mean, standardDeviation, round, slope, pearson };

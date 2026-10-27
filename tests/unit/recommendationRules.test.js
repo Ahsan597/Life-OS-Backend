@@ -1,13 +1,14 @@
 const {
-  trailingRun,
   missedInARow,
   lowCompletion,
   streakMilestone,
   checkInGap,
   lowSleep,
   risingStress,
+  streakAtRisk,
   evaluateRules,
 } = require("../../src/services/recommendationRules");
+const { trailingRun } = require("../../src/services/streak.service");
 const { addDays } = require("../../src/utils/dateUtils");
 
 // 2026-03-02 is a Monday.
@@ -146,6 +147,43 @@ describe("recommendation rules", () => {
     expect(risingStress(ctx({ today, checkIns: rising }))).toHaveLength(1);
     const flatHigh = range(MON, 14).map((d) => checkIn(d, { stressLevel: 4 }));
     expect(risingStress(ctx({ today, checkIns: flatHigh }))).toEqual([]);
+  });
+
+  describe("streak_at_risk", () => {
+    const forecast = (overrides) => ({
+      habitId: "1",
+      title: "Read",
+      currentStreak: 5,
+      target: { period: "day", date: MON, current: true },
+      riskScore: 0.72,
+      riskLevel: "high",
+      factors: [
+        { factor: "recent_completion", effect: "lowers_risk", detail: "Done 7 of the last 10." },
+        { factor: "day_of_week", effect: "raises_risk", detail: "Rarely done on Mondays." },
+      ],
+      ...overrides,
+    });
+
+    it("fires for a high-risk open period on a streak worth protecting", () => {
+      const [rec] = streakAtRisk(ctx({ streakRisks: [forecast()] }));
+      expect(rec).toMatchObject({
+        rule: "streak_at_risk",
+        habitId: "1",
+        dedupeKey: `streak_at_risk:1:${MON}`,
+      });
+      expect(rec.message).toContain('5-day streak on "Read" is at risk today');
+      expect(rec.reason).toBe("Forecast: 72% chance of a miss. Rarely done on Mondays.");
+    });
+
+    it("stays quiet otherwise", () => {
+      const quiet = [
+        forecast({ riskLevel: "medium" }),
+        forecast({ currentStreak: 2 }),
+        forecast({ target: { period: "day", date: MON, current: false } }),
+      ];
+      expect(streakAtRisk(ctx({ streakRisks: quiet }))).toEqual([]);
+      expect(streakAtRisk(ctx())).toEqual([]);
+    });
   });
 
   it("evaluateRules returns unique dedupe keys", () => {

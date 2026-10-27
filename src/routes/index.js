@@ -5,6 +5,7 @@ const habitRoutes = require("./habit.routes");
 const logRoutes = require("./log.routes");
 const checkInRoutes = require("./checkIn.routes");
 const insightRoutes = require("./insight.routes");
+const predictionRoutes = require("./prediction.routes");
 
 const router = express.Router();
 
@@ -14,5 +15,6 @@ router.use("/habits", habitRoutes);
 router.use("/logs", logRoutes);
 router.use("/checkins", checkInRoutes);
 router.use("/insights", insightRoutes);
+router.use("/predictions", predictionRoutes);
 
 module.exports = router;

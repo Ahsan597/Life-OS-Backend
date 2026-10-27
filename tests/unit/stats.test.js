@@ -1,4 +1,4 @@
-const { mean, round, slope, pearson } = require("../../src/utils/stats");
+const { mean, standardDeviation, round, slope, pearson } = require("../../src/utils/stats");
 
 const pts = (xs, ys) => xs.map((x, i) => ({ x, y: ys[i] }));
 
@@ -6,6 +6,11 @@ describe("stats utils", () => {
   it("mean is null for no values", () => {
     expect(mean([])).toBeNull();
     expect(mean([1, 2, 3])).toBe(2);
+  });
+
+  it("standardDeviation is the sample deviation, null below 2 values", () => {
+    expect(standardDeviation([2, 4, 4, 4, 5, 5, 7, 9])).toBeCloseTo(2.138, 3);
+    expect(standardDeviation([3])).toBeNull();
   });
 
   it("round keeps null and rounds to the given places", () => {

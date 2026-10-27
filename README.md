@@ -36,7 +36,7 @@ Notifications/reminders, exports, dashboards, possible frontend.
 
 ## Status
 
-🚧 Early development — Phase 0 (auth + setup), Phase 1 (habits, logs, check-ins, streaks, analytics) and Phase 2 (correlations + rule-based recommendations) are done.
+🚧 Early development — Phase 0 (auth + setup), Phase 1 (habits, logs, check-ins, streaks, analytics), Phase 2 (correlations + rule-based recommendations) and Phase 3 (streak-risk forecasting + personalized recommendation ranking) are done.
 
 ## Development
 
@@ -87,11 +87,11 @@ All routes are under `/api/v1` and need `Authorization: Bearer <accessToken>`.
 
 ## API (Phase 2 — insights)
 
-| Method | Route                           | Notes                                                                                                                                                                      |
-| ------ | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/insights/correlations`        | `?from=&to=` (default: last 90 days, max 366; today is excluded). Pearson `r` between each check-in metric and habit completion, overall and per habit, plus chart buckets |
-| GET    | `/insights/recommendations`     | `?status=pending\|accepted\|dismissed\|all` (default `pending`). Re-evaluates the rules first, so the list is always current                                               |
-| PATCH  | `/insights/recommendations/:id` | `{ status: "accepted" \| "dismissed" }`                                                                                                                                    |
+| Method | Route                           | Notes                                                                                                                                                                                                                        |
+| ------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/insights/correlations`        | `?from=&to=` (default: last 90 days, max 366; today is excluded). Pearson `r` between each check-in metric and habit completion, overall and per habit, plus chart buckets                                                   |
+| GET    | `/insights/recommendations`     | `?status=pending\|accepted\|dismissed\|all` (default `pending`), `?sort=rank\|recent` (default `rank`). Re-evaluates the rules first, so the list is always current. Pending items carry `score`, `priority`, `scoreFactors` |
+| PATCH  | `/insights/recommendations/:id` | `{ status: "accepted" \| "dismissed" }`                                                                                                                                                                                      |
 
 ### How insights are computed
 
@@ -107,3 +107,18 @@ All routes are under `/api/v1` and need `Authorization: Bearer <accessToken>`.
 - If today (or this week) isn't done yet, it doesn't break the streak or count as a miss in the completion rate.
 - History starts at the habit's creation date, or earlier if logs were backfilled.
 - Archived habits are read-only: logging or editing their logs returns 409.
+
+## API (Phase 3 — predictions)
+
+| Method | Route                      | Notes                                                                                                                                                                        |
+| ------ | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/predictions/streak-risk` | One forecast per active habit, riskiest first: `completionProbability`, `riskScore`, `riskLevel` (`low\|medium\|high\|insufficient_data`), `confidence`, `target`, `factors` |
+| GET    | `/predictions/accuracy`    | `?from=&to=` (default: last 30 days, max 366; today is excluded). Backtest of the model: Brier score vs. a base-rate baseline, per risk level and calibration buckets        |
+
+### How predictions are computed
+
+- **Streak risk** (`src/services/streakRisk.service.js`, model `heuristic_v1`) forecasts the chance that the habit's next due period is completed: today (or this week) while it's still open, otherwise the next scheduled day or week (`target.current` tells which). It starts from a recency-weighted completion rate (newer periods weigh more; a Beta prior keeps short histories near 50%), blends in the rate for the target weekday, then adjusts on the log-odds scale for a run of misses, an established streak, and today's check-in on metrics that moderately or strongly correlate with that habit. Below a few periods of history the level is `insufficient_data`. Every forecast lists plain-language `factors`.
+- Features are extracted separately from scoring, so a learned model (e.g. a Python `/predict` service) can later replace only the scoring step. `modelVersion` is returned for that reason.
+- **Accuracy** replays the model over past days using only the logs from before each forecast day, so it is an honest out-of-sample measure. `brierSkillScore` > 0 means the model beats always predicting the overall miss rate.
+- **Ranking**: each pending recommendation gets a 0-100 `score` from the rule's importance, the linked habit's current streak risk, the user's own accept/dismiss history for that rule (smoothed), and how long it has been sitting unanswered. A new rule, `streak_at_risk`, fires when a streak of 3+ is forecast as high risk in the open period.
+- Like correlations, forecasts are computed on request and not stored (see `database_design.txt`).

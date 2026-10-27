@@ -58,6 +58,15 @@ function updateStatus(id, status) {
   });
 }
 
+// How often the user accepted/dismissed each rule, for personalized ranking.
+function countDecisionsByRule(userId) {
+  return prisma.recommendation.groupBy({
+    by: ["rule", "status"],
+    where: { userId, status: { in: ["accepted", "dismissed"] } },
+    _count: { _all: true },
+  });
+}
+
 module.exports = {
   createManyIgnoringExisting,
   refreshPendingText,
@@ -65,4 +74,5 @@ module.exports = {
   findManyByUser,
   findByIdForUser,
   updateStatus,
+  countDecisionsByRule,
 };

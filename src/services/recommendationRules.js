@@ -14,10 +14,11 @@
  *   checkIns   [{ date, mood, energy, sleepHours, stressLevel }] for the recent window, oldest first
  *   lastCheckInDate  most recent check-in date ever, or null
  *   userCreatedDate  account creation day
+ *   streakRisks      streak-risk forecasts from streakRisk.service (optional)
  */
 const { addDays, diffDays, weekStart } = require("../utils/dateUtils");
 const { mean, round, slope } = require("../utils/stats");
-const { buildPeriods } = require("./streak.service");
+const { buildPeriods, trailingRun } = require("./streak.service");
 
 const MISSED_RUN = { daily: 3, custom: 3, weekly: 2 };
 const LOW_COMPLETION = {
@@ -33,28 +34,12 @@ const STREAK_MILESTONES = {
 const CHECKIN_GAP_DAYS = 3;
 const LOW_SLEEP = { windowDays: 7, minDays: 4, hours: 6 };
 const RISING_STRESS = { windowDays: 14, minDays: 5, slopePerDay: 0.05, recentAverage: 3 };
+const STREAK_AT_RISK_MIN_STREAK = 3;
 
 const unit = (habit, n) => {
   const word = habit.frequency === "weekly" ? "week" : "day";
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 };
-
-/**
- * The run of periods at the end of the history that all have `completed`
- * equal to the given value. An open (pending) period at the very end is
- * skipped, matching how streaks are counted.
- */
-function trailingRun(periods, completed) {
-  let end = periods.length - 1;
-  if (end >= 0 && periods[end].pending) end -= 1;
-  let length = 0;
-  let startKey = null;
-  for (let i = end; i >= 0 && periods[i].completed === completed; i--) {
-    length += 1;
-    startKey = periods[i].key;
-  }
-  return { length, startKey };
-}
 
 function periodsFor(habit, today, from = habit.start) {
   const start = from > habit.start ? from : habit.start;
@@ -189,6 +174,27 @@ function risingStress(ctx) {
   ];
 }
 
+// A streak worth protecting is forecast to break in the open period: nudge
+// before the miss happens rather than after.
+function streakAtRisk(ctx) {
+  return (ctx.streakRisks || [])
+    .filter(
+      (r) =>
+        r.target.current && r.riskLevel === "high" && r.currentStreak >= STREAK_AT_RISK_MIN_STREAK
+    )
+    .map((r) => {
+      const week = r.target.period === "week";
+      const biggestRisk = r.factors.find((f) => f.effect === "raises_risk");
+      return {
+        rule: "streak_at_risk",
+        habitId: r.habitId,
+        dedupeKey: `streak_at_risk:${r.habitId}:${r.target.date}`,
+        message: `Your ${r.currentStreak}-${week ? "week" : "day"} streak on "${r.title}" is at risk ${week ? "this week" : "today"}. Doing it early, even a small version, keeps it alive.`,
+        reason: `Forecast: ${Math.round(r.riskScore * 100)}% chance of a miss.${biggestRisk ? ` ${biggestRisk.detail}` : ""}`,
+      };
+    });
+}
+
 /** Runs every rule and returns all candidates. */
 function evaluateRules(ctx) {
   const missed = missedInARow(ctx);
@@ -201,6 +207,7 @@ function evaluateRules(ctx) {
     ...checkInGap(ctx),
     ...lowSleep(ctx),
     ...risingStress(ctx),
+    ...streakAtRisk(ctx),
   ];
 }
 
@@ -211,16 +218,17 @@ const RULES = [
   "checkin_gap",
   "low_sleep",
   "rising_stress",
+  "streak_at_risk",
 ];
 
 module.exports = {
   RULES,
-  trailingRun,
   missedInARow,
   lowCompletion,
   streakMilestone,
   checkInGap,
   lowSleep,
   risingStress,
+  streakAtRisk,
   evaluateRules,
 };

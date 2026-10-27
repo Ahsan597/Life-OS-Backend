@@ -1,22 +1,22 @@
 /**
- * Phase 2 "intelligence v1": statistics over data the user already logs.
- * Loads habits/logs/check-ins, resolves dates in the user's timezone, and
- * hands plain data to the pure correlation and rule modules.
+ * Phase 2 "intelligence v1": statistics over data the user already logs,
+ * plus Phase 3 ranking of the resulting recommendations. Loads
+ * habits/logs/check-ins, resolves dates in the user's timezone, and hands
+ * plain data to the pure correlation, rule and ranking modules.
  */
-const habitRepository = require("../repositories/habit.repository");
 const checkInRepository = require("../repositories/checkIn.repository");
 const recommendationRepository = require("../repositories/recommendation.repository");
 const userService = require("./user.service");
-const { loadCompletedDates } = require("./habit.service");
+const { loadHabitContext, loadCheckIns } = require("./analyticsContext.service");
 const { resolveRange } = require("./checkIn.service");
-const { habitStartDate } = require("./streak.service");
+const { forecastHabits } = require("./prediction.service");
 const { computeCorrelations, MIN_SAMPLE_SIZE } = require("./correlation.service");
 const { evaluateRules } = require("./recommendationRules");
+const { scoreRecommendations, byRank } = require("./recommendationRanking");
 const AppError = require("../utils/AppError");
 const {
   getTodayForUser,
   resolveLogicalDate,
-  toDbDate,
   fromDbDate,
   addDays,
   minDate,
@@ -26,35 +26,6 @@ const {
 const CORRELATION_DEFAULT_DAYS = 90;
 // The longest look-back any recommendation rule needs.
 const RULES_CHECKIN_WINDOW_DAYS = 14;
-
-/** Active habits with their completed days and the day their history starts. */
-async function loadHabitContext(userId, timezone) {
-  const habits = await habitRepository.findManyByUser(userId, { includeArchived: false });
-  const completedByHabit = await loadCompletedDates(habits.map((h) => h.id));
-  return habits.map((habit) => {
-    const completedDates = completedByHabit.get(habit.id);
-    return {
-      id: habit.id.toString(),
-      title: habit.title,
-      frequency: habit.frequency,
-      targetDays: habit.targetDays,
-      start: habitStartDate(resolveLogicalDate(habit.createdAt, timezone), completedDates),
-      completedDates,
-    };
-  });
-}
-
-async function loadCheckIns(userId, from, to) {
-  if (from > to) return [];
-  const rows = await checkInRepository.findManyInRange(userId, toDbDate(from), toDbDate(to));
-  return rows.map((c) => ({
-    date: fromDbDate(c.checkInDate),
-    mood: c.mood,
-    energy: c.energy,
-    sleepHours: c.sleepHours === null ? null : Number(c.sleepHours),
-    stressLevel: c.stressLevel,
-  }));
-}
 
 /**
  * Pearson correlations between each check-in metric and habit completion,
@@ -99,6 +70,7 @@ function toPublicRecommendation(rec) {
  * Re-evaluates every rule against the user's current data and syncs the
  * stored recommendations: new ones are added, pending ones that no longer
  * apply are removed, and accepted/dismissed ones are kept as history.
+ * @returns the streak-risk forecasts the rules used, for ranking
  */
 async function syncRecommendations(userId) {
   const user = await userService.getUser(userId);
@@ -109,6 +81,7 @@ async function syncRecommendations(userId) {
     loadCheckIns(userId, addDays(today, -(RULES_CHECKIN_WINDOW_DAYS - 1)), today),
     checkInRepository.findLatest(userId),
   ]);
+  const streakRisks = await forecastHabits(userId, habits, today);
 
   const candidates = evaluateRules({
     today,
@@ -116,6 +89,7 @@ async function syncRecommendations(userId) {
     checkIns,
     lastCheckInDate: latest ? fromDbDate(latest.checkInDate) : null,
     userCreatedDate: resolveLogicalDate(user.createdAt, user.timezone),
+    streakRisks,
   });
 
   await recommendationRepository.createManyIgnoringExisting(
@@ -134,14 +108,42 @@ async function syncRecommendations(userId) {
     userId,
     candidates.map((c) => c.dedupeKey)
   );
+  return streakRisks;
 }
 
-async function getRecommendations(userId, { status }) {
-  await syncRecommendations(userId);
-  const rows = await recommendationRepository.findManyByUser(userId, {
-    status: status === "all" ? undefined : status,
+/** rule -> how many times this user accepted / dismissed it. */
+async function loadFeedback(userId) {
+  const rows = await recommendationRepository.countDecisionsByRule(userId);
+  const byRule = new Map();
+  for (const { rule, status, _count } of rows) {
+    const counts = byRule.get(rule) || { accepted: 0, dismissed: 0 };
+    counts[status] = _count._all;
+    byRule.set(rule, counts);
+  }
+  return byRule;
+}
+
+async function getRecommendations(userId, { status, sort }) {
+  const streakRisks = await syncRecommendations(userId);
+  const [rows, feedbackByRule] = await Promise.all([
+    recommendationRepository.findManyByUser(userId, {
+      status: status === "all" ? undefined : status,
+    }),
+    loadFeedback(userId),
+  ]);
+
+  const riskByHabit = new Map(
+    streakRisks
+      .filter((r) => r.riskLevel !== "insufficient_data")
+      .map((r) => [r.habitId, r.riskScore])
+  );
+  const scored = scoreRecommendations(rows.map(toPublicRecommendation), {
+    riskByHabit,
+    feedbackByRule,
+    now: new Date(),
   });
-  return rows.map(toPublicRecommendation);
+  // Rows arrive newest first, and the sort is stable, so ties stay newest first.
+  return sort === "rank" ? scored.sort(byRank) : scored;
 }
 
 async function updateRecommendationStatus(userId, id, status) {
