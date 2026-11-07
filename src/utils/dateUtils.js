@@ -23,6 +23,16 @@ function resolveLogicalDate(date, timezone) {
   return formatter.format(date);
 }
 
+/** Wall-clock time ("HH:MM", 24h) of `date` in the given IANA timezone. */
+function resolveLocalTime(date, timezone) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
+}
+
 function getTodayForUser(timezone) {
   return resolveLogicalDate(new Date(), timezone);
 }
@@ -73,6 +83,7 @@ function maxDate(a, b) {
 
 module.exports = {
   resolveLogicalDate,
+  resolveLocalTime,
   getTodayForUser,
   isValidDateString,
   toDbDate,

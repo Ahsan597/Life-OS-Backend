@@ -1,5 +1,5 @@
 const { z } = require("zod");
-const { dateString } = require("./common.validators");
+const { dateString, text } = require("./common.validators");
 
 const scale = z.number().int().min(1).max(5).nullable().optional();
 
@@ -20,7 +20,7 @@ const createCheckInSchema = z
       .nullable()
       .optional(),
     stressLevel: scale,
-    note: z.string().trim().max(2000).nullable().optional(),
+    note: text({ max: 2000 }).nullable().optional(),
   })
   .refine((body) => METRICS.some((m) => body[m] != null), {
     message: "Provide at least one of: mood, energy, sleepHours, stressLevel",

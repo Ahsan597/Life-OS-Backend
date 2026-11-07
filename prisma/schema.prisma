@@ -16,10 +16,18 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
+  // Notification preferences. reminderTime is "HH:MM" in the user's timezone.
+  remindersEnabled Boolean   @default(true) @map("reminders_enabled")
+  reminderTime     String    @default("20:00") @map("reminder_time") @db.VarChar(5)
+  emailReminders   Boolean   @default(false) @map("email_reminders")
+  // Logical date the reminder job last handled this user, so it runs once a day.
+  lastReminderOn   DateTime? @map("last_reminder_on") @db.Date
+
   refreshTokens   RefreshToken[]
   habits          Habit[]
   checkIns        CheckIn[]
   recommendations Recommendation[]
+  notifications   Notification[]
 
   @@map("users")
 }
@@ -130,4 +138,39 @@ model Recommendation {
   @@unique([userId, dedupeKey])
   @@index([userId, status])
   @@map("recommendations")
+}
+
+enum NotificationType {
+  reminder
+  insight
+  recommendation
+}
+
+// In-app notifications, created by background jobs (e.g. the daily reminder).
+// `dedupeKey` names one occurrence, e.g. "daily_reminder:2026-10-27", so a
+// job running twice (or on two servers) can never notify twice.
+model Notification {
+  id          BigInt           @id @default(autoincrement())
+  userId      BigInt           @map("user_id")
+  type        NotificationType
+  dedupeKey   String           @map("dedupe_key") @db.VarChar(150)
+  title       String           @db.VarChar(150)
+  message     String           @db.Text
+  // Deep-link payload for the client, e.g. { "habitIds": ["12"] }.
+  data        Json?
+  isRead      Boolean          @default(false) @map("is_read")
+  readAt      DateTime?        @map("read_at")
+  // When the user asked to be notified (their local reminder time, in UTC).
+  scheduledAt DateTime?        @map("scheduled_at")
+  // When it was delivered outside the app (email); null = in-app only.
+  sentAt      DateTime?        @map("sent_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("notifications")
 }

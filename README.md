@@ -36,7 +36,7 @@ Notifications/reminders, exports, dashboards, possible frontend.
 
 ## Status
 
-🚧 Early development — Phase 0 (auth + setup), Phase 1 (habits, logs, check-ins, streaks, analytics), Phase 2 (correlations + rule-based recommendations) and Phase 3 (streak-risk forecasting + personalized recommendation ranking) are done.
+🚧 Early development — Phase 0 (auth + setup), Phase 1 (habits, logs, check-ins, streaks, analytics), Phase 2 (correlations + rule-based recommendations), Phase 3 (streak-risk forecasting + personalized recommendation ranking) and Phase 4 (reminders, notifications, export, settings, security hardening) are done.
 
 ## Development
 
@@ -58,6 +58,7 @@ npm run seed:demo           # optional: demo@lifeos.dev / Demo@12345 with 6 week
 | `npm run lint` / `format`                | ESLint / Prettier                                                                 |
 | `npm run check`                          | Lint + format check + tests, the same as CI                                       |
 | `npm run seed:demo`                      | Resets the demo account with deterministic sample data (refuses in production)    |
+| `npm run jobs:run [name]`                | Runs the background jobs once, now (e.g. `daily-reminders`)                       |
 
 Integration tests read `.env.test` and refuse to run against any database whose name doesn't end in `_test`, so they can never wipe dev data. If your MySQL volume predates `docker/mysql/init/`, create the test DB once:
 
@@ -122,3 +123,27 @@ All routes are under `/api/v1` and need `Authorization: Bearer <accessToken>`.
 - **Accuracy** replays the model over past days using only the logs from before each forecast day, so it is an honest out-of-sample measure. `brierSkillScore` > 0 means the model beats always predicting the overall miss rate.
 - **Ranking**: each pending recommendation gets a 0-100 `score` from the rule's importance, the linked habit's current streak risk, the user's own accept/dismiss history for that rule (smoothed), and how long it has been sitting unanswered. A new rule, `streak_at_risk`, fires when a streak of 3+ is forecast as high risk in the open period.
 - Like correlations, forecasts are computed on request and not stored (see `database_design.txt`).
+
+## API (Phase 4 — settings, notifications, export)
+
+| Method | Route                     | Notes                                                                                                                                                                        |
+| ------ | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/users/me`               | Profile plus `preferences: { remindersEnabled, reminderTime, emailReminders }` (`/auth/me` returns the same shape)                                                           |
+| PATCH  | `/users/me`               | Any of `{ name, timezone, preferences: { remindersEnabled?, reminderTime? ("HH:MM", 24h, user's timezone), emailReminders? } }`. A new timezone applies to dates from now on |
+| GET    | `/notifications`          | `?unreadOnly=true&limit=20&before=<cursor>`, newest first. Returns `{ notifications, unreadCount, nextCursor }`                                                              |
+| PATCH  | `/notifications/:id`      | `{ isRead: boolean }`                                                                                                                                                        |
+| POST   | `/notifications/read-all` | Returns `{ updated }`                                                                                                                                                        |
+| GET    | `/export`                 | `?format=json` (default: everything in one file) or `?format=csv&dataset=habits\|habit_logs\|check_ins\|recommendations`. Sent as a download (`Content-Disposition`)         |
+
+### Reminders and background jobs
+
+- An in-process scheduler (`src/jobs`) starts with the server (`SCHEDULER_ENABLED`, off in tests). `daily-reminders` runs every 5 minutes; on the first run after a user's `reminderTime` in their own timezone, it creates one in-app notification listing what is still open today (habits not done, a missing check-in, streaks forecast as at risk). With nothing open, nothing is sent. `notification-cleanup` deletes notifications older than 90 days.
+- Each reminder has a unique `dedupeKey` (`daily_reminder:<date>`), so a repeated or concurrent run (e.g. two servers) can't notify twice, and only the run that created it sends the email.
+- Email is a placeholder: `MAIL_TRANSPORT=log` writes the email to the log instead of sending it. A real provider plugs into `src/services/mailer.js` without changing callers.
+
+### Security
+
+- `helmet` security headers; `Cache-Control: no-store` on every API response; CORS limited to `CORS_ORIGIN` (required in production).
+- Rate limits (`express-rate-limit`, 429 with the usual `{ error }` body and standard `RateLimit` / `Retry-After` headers): 300 requests per 15 min per IP overall; 10 **failed** login/register attempts per 15 min per IP; 10 exports per hour per user. The store is in-memory (per process), so use a shared store (e.g. Redis) when running several instances. Set `TRUST_PROXY` to the number of proxies in front of the app so limits key on the real client IP.
+- Input: every body/query/param is validated with Zod, and unknown fields are dropped. Free text is NFC-normalized, trimmed and stripped of control characters; it's otherwise stored as typed, and escaping is left to whatever renders it. CSV exports prefix cells starting with `= + - @` so spreadsheets don't run them as formulas.
+- Known: `npm audit` reports `deepmerge-ts` inside the Prisma CLI (dev tooling only, not in the running app); the fix needs the Prisma 7 major upgrade.

@@ -46,12 +46,22 @@ async function main() {
   const user = await prisma.user.upsert({
     where: { email: EMAIL },
     create: { email: EMAIL, passwordHash, name: "Demo User", timezone: TIMEZONE, createdAt },
-    update: { passwordHash, name: "Demo User", timezone: TIMEZONE, createdAt },
+    update: {
+      passwordHash,
+      name: "Demo User",
+      timezone: TIMEZONE,
+      createdAt,
+      remindersEnabled: true,
+      reminderTime: "20:00",
+      emailReminders: false,
+      lastReminderOn: null,
+    },
   });
 
   // Logs cascade with habits.
   await prisma.$transaction([
     prisma.recommendation.deleteMany({ where: { userId: user.id } }),
+    prisma.notification.deleteMany({ where: { userId: user.id } }),
     prisma.habit.deleteMany({ where: { userId: user.id } }),
     prisma.checkIn.deleteMany({ where: { userId: user.id } }),
   ]);

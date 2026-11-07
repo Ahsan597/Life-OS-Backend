@@ -155,4 +155,9 @@ async function updateRecommendationStatus(userId, id, status) {
   return toPublicRecommendation(updated);
 }
 
-module.exports = { getCorrelations, getRecommendations, updateRecommendationStatus };
+module.exports = {
+  toPublicRecommendation,
+  getCorrelations,
+  getRecommendations,
+  updateRecommendationStatus,
+};
