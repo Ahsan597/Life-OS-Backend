@@ -196,6 +196,8 @@ async function getHabitStats(userId, habitId, range) {
 }
 
 module.exports = {
+  toPublicHabit,
+  toPublicLog,
   createHabit,
   listHabits,
   getHabit,

@@ -3,22 +3,13 @@ const { Prisma } = require("@prisma/client");
 const userRepository = require("../repositories/user.repository");
 const refreshTokenRepository = require("../repositories/refreshToken.repository");
 const tokenService = require("./token.service");
+const { toPublicUser } = require("./user.service");
 const AppError = require("../utils/AppError");
 
 const BCRYPT_ROUNDS = 12;
 // Compared against when the email doesn't exist, so login takes the same time
 // either way and doesn't reveal which emails are registered.
 const DUMMY_HASH = bcrypt.hashSync("dummy-password-for-timing", BCRYPT_ROUNDS);
-
-function toPublicUser(user) {
-  return {
-    id: user.id.toString(),
-    email: user.email,
-    name: user.name,
-    timezone: user.timezone,
-    createdAt: user.createdAt,
-  };
-}
 
 async function issueTokens(userId) {
   const accessToken = tokenService.signAccessToken(userId);

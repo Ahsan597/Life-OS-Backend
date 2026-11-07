@@ -127,6 +127,7 @@ async function getCheckInStats(userId, query) {
 }
 
 module.exports = {
+  toPublicCheckIn,
   resolveRange,
   saveCheckIn,
   listCheckIns,

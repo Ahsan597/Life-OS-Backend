@@ -174,25 +174,28 @@ function risingStress(ctx) {
   ];
 }
 
-// A streak worth protecting is forecast to break in the open period: nudge
-// before the miss happens rather than after.
+// A streak worth protecting, forecast to break in the period that's open now.
+function isStreakAtRisk(forecast) {
+  return (
+    forecast.target.current &&
+    forecast.riskLevel === "high" &&
+    forecast.currentStreak >= STREAK_AT_RISK_MIN_STREAK
+  );
+}
+
+// Nudge before the miss happens rather than after.
 function streakAtRisk(ctx) {
-  return (ctx.streakRisks || [])
-    .filter(
-      (r) =>
-        r.target.current && r.riskLevel === "high" && r.currentStreak >= STREAK_AT_RISK_MIN_STREAK
-    )
-    .map((r) => {
-      const week = r.target.period === "week";
-      const biggestRisk = r.factors.find((f) => f.effect === "raises_risk");
-      return {
-        rule: "streak_at_risk",
-        habitId: r.habitId,
-        dedupeKey: `streak_at_risk:${r.habitId}:${r.target.date}`,
-        message: `Your ${r.currentStreak}-${week ? "week" : "day"} streak on "${r.title}" is at risk ${week ? "this week" : "today"}. Doing it early, even a small version, keeps it alive.`,
-        reason: `Forecast: ${Math.round(r.riskScore * 100)}% chance of a miss.${biggestRisk ? ` ${biggestRisk.detail}` : ""}`,
-      };
-    });
+  return (ctx.streakRisks || []).filter(isStreakAtRisk).map((r) => {
+    const week = r.target.period === "week";
+    const biggestRisk = r.factors.find((f) => f.effect === "raises_risk");
+    return {
+      rule: "streak_at_risk",
+      habitId: r.habitId,
+      dedupeKey: `streak_at_risk:${r.habitId}:${r.target.date}`,
+      message: `Your ${r.currentStreak}-${week ? "week" : "day"} streak on "${r.title}" is at risk ${week ? "this week" : "today"}. Doing it early, even a small version, keeps it alive.`,
+      reason: `Forecast: ${Math.round(r.riskScore * 100)}% chance of a miss.${biggestRisk ? ` ${biggestRisk.detail}` : ""}`,
+    };
+  });
 }
 
 /** Runs every rule and returns all candidates. */
@@ -229,6 +232,7 @@ module.exports = {
   checkInGap,
   lowSleep,
   risingStress,
+  isStreakAtRisk,
   streakAtRisk,
   evaluateRules,
 };

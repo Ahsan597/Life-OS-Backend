@@ -1,5 +1,5 @@
 const { z } = require("zod");
-const { dateString } = require("./common.validators");
+const { dateString, text } = require("./common.validators");
 
 // 0 = Sunday ... 6 = Saturday. Deduplicated and sorted so stored values are canonical.
 const targetDaysField = z
@@ -8,8 +8,8 @@ const targetDaysField = z
   .transform((days) => [...new Set(days)].sort((a, b) => a - b));
 
 const habitFields = {
-  title: z.string().trim().min(1, "Title is required").max(150),
-  description: z.string().trim().max(2000).nullable(),
+  title: text({ min: 1, max: 150, message: "Title is required" }),
+  description: text({ max: 2000 }).nullable(),
   frequency: z.enum(["daily", "weekly", "custom"]),
   targetDays: targetDaysField.nullable(),
   isActive: z.boolean(),
@@ -65,13 +65,13 @@ const createLogSchema = z.object({
   // Defaults to "today" in the user's timezone (resolved in the service).
   date: dateString.optional(),
   completed: z.boolean().default(true),
-  note: z.string().trim().max(2000).nullable().optional(),
+  note: text({ max: 2000 }).nullable().optional(),
 });
 
 const updateLogSchema = z
   .object({
     completed: z.boolean().optional(),
-    note: z.string().trim().max(2000).nullable().optional(),
+    note: text({ max: 2000 }).nullable().optional(),
   })
   .refine((body) => Object.keys(body).length > 0, "Provide at least one field to update");
 

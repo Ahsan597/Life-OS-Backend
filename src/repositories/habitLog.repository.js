@@ -40,7 +40,16 @@ function update(id, data) {
   return prisma.habitLog.update({ where: { id }, data });
 }
 
+// Every log of every habit (archived included) the user owns, for export.
+function findAllForUser(userId) {
+  return prisma.habitLog.findMany({
+    where: { habit: { userId } },
+    orderBy: [{ habitId: "asc" }, { logDate: "asc" }],
+  });
+}
+
 module.exports = {
+  findAllForUser,
   findByHabitAndDate,
   upsert,
   findManyByHabit,

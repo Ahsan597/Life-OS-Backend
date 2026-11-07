@@ -24,4 +24,8 @@ function findLatest(userId) {
   return prisma.checkIn.findFirst({ where: { userId }, orderBy: { checkInDate: "desc" } });
 }
 
-module.exports = { findByUserAndDate, upsert, findManyInRange, findLatest };
+function findAllForUser(userId) {
+  return prisma.checkIn.findMany({ where: { userId }, orderBy: { checkInDate: "asc" } });
+}
+
+module.exports = { findByUserAndDate, upsert, findManyInRange, findLatest, findAllForUser };

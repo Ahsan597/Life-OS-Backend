@@ -154,3 +154,6 @@ NOTES
   boundaries" / timezones for habit logs and check-ins.
 - Frontend and backend must stay in phase-lockstep: don't build frontend UI
   for a feature the backend hasn't shipped yet in that phase.
+- Status (2026-10-27): backend Phases 0-4 are done. Work beyond Phase 4
+  (decision journal, conversational logging, ML service, production
+  readiness) is tracked in future_plannings.txt, with a suggested order.

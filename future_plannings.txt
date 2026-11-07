@@ -1,7 +1,17 @@
 LIFE OS - FUTURE PLANNINGS
-(Ideas for later. Not part of the current phase roadmap in
-planning_and_phases.txt - these are things to revisit once Phase 0-1 are
-solid, so scope doesn't creep early.)
+(Ideas for later. Not part of the phase roadmap in planning_and_phases.txt.
+Pick them up one at a time, in the suggested order at the bottom, so scope
+doesn't creep.)
+
+--------------------------------------------------------------------------
+STATUS (2026-10-27)
+--------------------------------------------------------------------------
+Backend: Phases 0-4 of planning_and_phases.txt are DONE (auth, habits,
+check-ins, streaks, correlations, recommendations, streak-risk forecasting,
+ranking, reminders, notifications, export, settings, security pass).
+Frontend: Phases 0-2 built; Phase 3 and 4 prompts are ready in
+frontend_phase3_prompt.md and frontend_phase4_prompt.md.
+Everything below is future work.
 
 --------------------------------------------------------------------------
 FEATURE: Conversational Assistant Logging (no manual tracking)
@@ -52,6 +62,109 @@ Where this fits:
   Best considered after core Phase 0-3 functionality is working, as an
   alternative "smart" input method layered on top of the existing data
   model - not a replacement for the manual UI, but an additional way in.
+
+--------------------------------------------------------------------------
+FEATURE: Decision Journal + Life Areas / Goals (suggested "Phase 5")
+--------------------------------------------------------------------------
+Problem:
+  The vision is "decision intelligence across every area of life", but today
+  Life OS only tracks habits and daily state. Decisions - the other half of
+  the vision - aren't captured anywhere.
+
+Idea:
+  - Life areas: user-defined groups like Health, Career, Finance,
+    Relationships. Habits (and later decisions/goals) can belong to one.
+  - Decision journal: record a decision when it's made (context, what was
+    decided, expected outcome, a follow-up date), then come back later and
+    record what actually happened and rate it 1-5.
+  - Goals (optional, later): a target per life area that habits contribute to.
+
+Why it matters:
+  Reviewing past decisions against their real outcomes is how people get
+  better at deciding. It also gives the intelligence layer a new kind of
+  data: e.g. "decisions made on low-sleep days turn out worse".
+
+Rough technical approach:
+  - Tables are already designed in database_design.txt ("PHASE 1 (deferred
+    pillar)"): life_areas, decisions, plus habits.life_area_id (SET NULL).
+  - Endpoints: CRUD /life-areas, CRUD /decisions, PATCH /decisions/:id for
+    the follow-up (actual_outcome, outcome_rating).
+  - Follow-up reminders: reuse the Phase 4 reminder job + notifications
+    table ("Time to review: <decision>" on follow_up_date).
+  - Insights: correlate outcome_rating with check-in metrics on decided_at,
+    reusing correlation.service.
+  - Add decisions to the /export endpoint.
+
+Dependencies / prerequisites:
+  - None blocking: Phases 0-4 are done. Frontend should catch up to Phase 4
+    first so both sides stay in lockstep.
+
+--------------------------------------------------------------------------
+FEATURE: Python ML Prediction Service (optional item from Phase 3)
+--------------------------------------------------------------------------
+Problem:
+  Streak risk is forecast by a hand-tuned formula ("heuristic_v1"). It beats
+  a naive baseline, but its weights are guesses, not learned from data.
+
+Idea:
+  A separate Python microservice (FastAPI + scikit-learn, e.g. logistic
+  regression or gradient boosting) exposing POST /predict. Express sends it
+  the same features the heuristic uses and gets a probability back.
+
+Rough technical approach:
+  - The seam already exists: streakRisk.service.js keeps extractFeatures()
+    separate from scoreFeatures(), and every forecast carries modelVersion.
+  - Train offline from habit_logs/check_ins (the backtest in
+    predictionBacktest.js already produces honest point-in-time
+    examples), compare against heuristic_v1 with GET /predictions/accuracy,
+    and only switch if the Brier skill score is clearly better.
+  - Fall back to the heuristic if the service is down or slow (timeout).
+  - At that point, revisit the predictions table in database_design.txt to
+    log served predictions for monitoring.
+
+Dependencies / prerequisites:
+  - Months of real usage data from real users; with one demo account a
+    learned model would just overfit. Not worth building before then.
+
+--------------------------------------------------------------------------
+PRODUCTION READINESS (before real users)
+--------------------------------------------------------------------------
+Not features, but needed before anyone other than the developer uses it:
+
+  - Deployment: Dockerfile for the API, run `prisma migrate deploy` on
+    release, a hosting target, and a CI step that deploys after tests pass.
+  - Account management: change password, forgot/reset password (needs real
+    email), change email, delete account (GDPR-style; cascades already
+    exist in the schema).
+  - Real email provider: replace the "log" placeholder in
+    src/services/mailer.js (nodemailer SMTP, SES, Resend, ...).
+  - Multi-instance support: Redis-backed rate-limit store, and move the
+    in-process scheduler to a queue (e.g. BullMQ) for retries and
+    exactly-once jobs.
+  - Prisma 7 upgrade: clears the remaining `npm audit` advisory
+    (deepmerge-ts in the Prisma CLI); a breaking major, needs its own pass.
+  - Observability: error tracking (e.g. Sentry), request metrics, alerts on
+    failed jobs; database backups and a tested restore.
+
+--------------------------------------------------------------------------
+SMALLER IDEAS (parked)
+--------------------------------------------------------------------------
+  - Real push / browser notifications (Web Push) on top of the Phase 4
+    notifications table.
+  - Data import (the inverse of /export, e.g. from another habit app's CSV).
+  - Notification types beyond the daily reminder (weekly summary,
+    new high-priority recommendation).
+  - Per-habit reminder times.
+
+--------------------------------------------------------------------------
+SUGGESTED ORDER
+--------------------------------------------------------------------------
+  1. Frontend catches up: Phase 3, then Phase 4 prompts.
+  2. Use the app daily for a few weeks; fix what real use reveals.
+  3. Decision Journal + Life Areas ("Phase 5").
+  4. Production readiness (before inviting any other user).
+  5. Conversational Assistant Logging.
+  6. Python ML service, once there is enough real data.
 
 --------------------------------------------------------------------------
 (Add more future ideas below as they come up.)
